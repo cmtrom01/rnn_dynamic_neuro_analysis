@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from torch import optim
 import neurogym as ngym
-
+from sklearn.decomposition import PCA
 
 class ContinuousTimeModel(nn.Module):
     def __init__(self, input_size: int, hidden_size: int, tau: float, dt: float) -> None:
@@ -200,29 +200,68 @@ class ModelAnalyzer:
         self.model = model
         self.loader = loader
 
+    #def plot_dynamical_system_analysis(self):
+
     def plot_pca(self):
         perf = 0
         num_trial = 10
         activity_dict = {}
         trial_infos = {}
         for i, input in enumerate(self.loader):
-            model.train()
 
             model_input = input[0, :, :].reshape((1, 20, 1))
             labels = input[1, :, :].reshape((1, 20, 1))
 
             action_pred, rnn_activity = self.model(model_input)
-            rnn_activity = rnn_activity[:, 0, :].detach().numpy()
+            print('rnn_activity shape: ')
+            print(rnn_activity.shape)
+            rnn_activity = rnn_activity[:, 0, :].detach().numpy().reshape((-1, 100))
             activity_dict[i] = rnn_activity
-            trial_infos[i] = labels[:, 19, :].reshape((-1, 1))
+            trial_infos[i] = labels[:, 0, :]
+            print(i)
+
+        activity_list = []
+
+        for i in range(4):
+            print(activity_dict[i])
+            activity_list.append(activity_dict[i])
+
 
         # Concatenate activity for PCA
-        activity = np.concatenate(list(activity_dict[i] for i in range(num_trial)), axis=0)
+        activity = np.concatenate(activity_list, axis=0)
         print('Shape of the neural activity: (Time points, Neurons): ', activity.shape)
+        pca = PCA(n_components=2)
+        pca.fit(activity)  # activity (Time points, Neurons)
+        activity_pc = pca.transform(activity)  # transform to low-dimension
+        print('Shape of the projected activity: (Time points, PCs): ', activity_pc.shape)
 
         # Print trial informations
         for i in range(5):
             print('Trial ', i, trial_infos[i])
+
+        # Plot all trials in ax1, plot fewer trials in ax2
+        fig, (ax1, ax2) = plt.subplots(1, 2, sharey=True, sharex=True, figsize=(6, 3))
+
+        for i in range(4):
+            # Transform and plot each trial
+            activity_pc = pca.transform(activity_dict[i])  # (Time points, PCs)
+
+            trial = trial_infos[i]
+            color = 'red'
+
+            _ = ax1.plot(activity_pc[:, 0], activity_pc[:, 1], 'o-', color=color)
+            if i < 3:
+                _ = ax2.plot(activity_pc[:,
+                             0], activity_pc[:, 1], 'o-', color=color)
+
+            # Plot the beginning of a trial with a special symbol
+            _ = ax1.plot(activity_pc[0, 0], activity_pc[0, 1], '^', color='black')
+
+        ax1.set_title('{:d} Trials'.format(100))
+        ax2.set_title('{:d} Trials'.format(3))
+        ax1.set_xlabel('PC 1')
+        ax1.set_ylabel('PC 2')
+        fig.show()
 
     def plot_inputs_and_activations(self, inputs, activations):
         print(inputs.shape)
